@@ -605,7 +605,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public string SolutionFile()
 		{
-			return Path.Combine(ProjectDirectory.NormalizePathSeparators(), $"{InvalidCharactersRegexPattern.Replace(m_ProjectName, "_")}.sln");
+			//适配ET框架自己生成的解决方案
+			//return Path.Combine(ProjectDirectory.NormalizePathSeparators(), $"{InvalidCharactersRegexPattern.Replace(m_ProjectName, "_")}.sln");
+			return Path.Combine(ProjectDirectory.NormalizePathSeparators(), "ET.sln");
 		}
 
 		internal string GetLangVersion(Assembly assembly)
@@ -640,7 +642,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				var key = argument
 					.Substring(1, index - 1)
 					.Trim();
-				
+
 				if (!names.Contains(key))
 					continue;
 
