@@ -878,6 +878,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private void SyncSolution(IEnumerable<Assembly> assemblies)
 		{
+			return; // ET框架生成的ET.sln 就很好了，无需重新生成自定义的解决方案
 			if (InvalidCharactersRegexPattern.IsMatch(ProjectDirectory))
 				Debug.LogWarning("Project path contains special characters, which can be an issue when opening Visual Studio");
 
