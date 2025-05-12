@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using UnityEngine;
 using SimpleJSON;
 using IOPath = System.IO.Path;
+using Debug = UnityEngine.Debug;
 
 namespace Microsoft.Unity.VisualStudio.Editor {
 	internal class VisualStudioCursorInstallation : VisualStudioInstallation {
@@ -448,6 +449,36 @@ namespace Microsoft.Unity.VisualStudio.Editor {
 			}
 		}
 
+		private Process FindRunningCursorWithSolution(string solutionPath) {
+			var directory = IOPath.GetDirectoryName(solutionPath);
+			var processes = Process.GetProcessesByName("cursor");
+			
+			var normalizedTargetPath = directory.Replace('\\', '/').TrimEnd('/').ToLowerInvariant();
+			
+			foreach (var process in processes) {
+				try {
+					var workspaces = ProcessRunner.GetProcessWorkspaces(process);
+					if (workspaces != null && workspaces.Length > 0) {
+						foreach (var workspace in workspaces) {
+							var normalizedWorkspaceDir = workspace.Replace('\\', '/').TrimEnd('/').ToLowerInvariant();
+
+							if (string.Equals(normalizedWorkspaceDir, normalizedTargetPath, StringComparison.OrdinalIgnoreCase) ||
+								normalizedTargetPath.StartsWith(normalizedWorkspaceDir + "/", StringComparison.OrdinalIgnoreCase) ||
+								normalizedWorkspaceDir.StartsWith(normalizedTargetPath + "/", StringComparison.OrdinalIgnoreCase))
+							{
+								return process;
+							}
+						}
+					}
+				}
+				catch (Exception ex) {
+					Debug.LogError($"[Cursor] Error checking process: {ex}");
+					continue;
+				}
+			}
+			return null;
+		}
+
 		public override bool Open(string path, int line, int column, string solution) {
 			line = Math.Max(1, line);
 			column = Math.Max(0, column);
@@ -455,10 +486,26 @@ namespace Microsoft.Unity.VisualStudio.Editor {
 			var directory = IOPath.GetDirectoryName(solution);
 			var application = Path;
 
-			ProcessRunner.Start(string.IsNullOrEmpty(path) ?
-				ProcessStartInfoFor(application, $"\"{directory}\"") :
-				ProcessStartInfoFor(application, $"\"{directory}\" -g \"{path}\":{line}:{column}"));
+			var existingProcess = FindRunningCursorWithSolution(directory);
+			if (existingProcess != null) {
+				try {
+					var args = string.IsNullOrEmpty(path) ? 
+						$"--reuse-window \"{directory}\"" : 
+						$"--reuse-window -g \"{path}\":{line}:{column}";
+					
+					ProcessRunner.Start(ProcessStartInfoFor(application, args));
+					return true;
+				}
+				catch (Exception ex) {
+					Debug.LogError($"[Cursor] Error using existing instance: {ex}");
+				}
+			}
 
+			var newArgs = string.IsNullOrEmpty(path) ?
+				$"--new-window \"{directory}\"" :
+				$"--new-window \"{directory}\" -g \"{path}\":{line}:{column}";
+			
+			ProcessRunner.Start(ProcessStartInfoFor(application, newArgs));
 			return true;
 		}
 
