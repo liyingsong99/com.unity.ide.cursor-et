@@ -1,0 +1,528 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# ET框架完整开发规范 - AI开发助手
+
+## 最重要基础原则
+1. **语言要求**：所有AI回复和代码注释都必须使用**中文**
+2. **严禁假设性代码**：AI提供的代码必须是完整可执行的，严禁出现"假设xxx已完成"等占位符
+
+## ET框架核心架构原则
+
+### Entity-Component-System (ECS) 架构
+- **Entity**：只包含数据，不包含方法
+- **System**：只包含逻辑，不包含数据  
+- **Component**：Entity的组成部分，遵循组合优于继承
+- **分离原则**：严格分离数据定义和业务逻辑
+
+### 包结构规范
+- **所有代码文件**必须创建在 `Packages/cn.etetet.*` 目录下
+- **包命名规范**：`cn.etetet.{功能模块名}`
+  - 核心包：`cn.etetet.core`
+  - 功能包：`cn.etetet.mmo`、`cn.etetet.bag`、`cn.etetet.skill` 等
+  - UI包：`cn.etetet.yiui*` 系列
+
+### 程序集分类规范
+每个包必须支持以下四个程序集分类：
+
+#### 1. Model 程序集 (`Scripts/Model/`)
+- **用途**：服务器和客户端共享的模型层
+- **内容**：Entity定义、配置数据、共享逻辑
+- **特点**：不可热更新，稳定性高
+
+#### 2. ModelView 程序集 (`Scripts/ModelView/`)  
+- **用途**：客户端专用的视图模型层
+- **内容**：UI相关Entity、客户端专用组件
+- **特点**：不可热更新，UI底层支持
+
+#### 3. Hotfix 程序集 (`Scripts/Hotfix/`)
+- **用途**：服务器和客户端共享的热更新逻辑层
+- **内容**：System类、业务逻辑实现
+- **特点**：可热更新，核心业务逻辑
+
+#### 4. HotfixView 程序集 (`Scripts/HotfixView/`)
+- **用途**：客户端专用的热更新视图层
+- **内容**：UI System类、客户端显示逻辑
+- **特点**：可热更新，UI业务逻辑
+
+## Entity 开发规范
+
+### Entity 类定义规范
+```csharp
+// 位置：Packages/cn.etetet.{包名}/Scripts/Model/ 或 Scripts/ModelView/
+namespace ET  // 或 ET.Client, ET.Server
+{
+    /// <summary>
+    /// 详细的中文描述
+    /// </summary>
+    [ComponentOf(typeof(ParentEntityType))]  // 指定父实体类型（如适用）
+    public class ExampleComponent : Entity, IAwake, IDestroy
+    {
+        // 只包含数据字段，不包含方法
+        public int SomeValue;
+        public string SomeName;
+        public List<int> SomeList;
+    }
+}
+```
+
+### Entity 类要求
+- **必须**继承 `Entity` 基类
+- **必须**实现 `IAwake` 接口（生命周期接口）
+- **根据需要**实现其他接口：`IDestroy`、`IUpdate`、`ISerialize` 等
+- **严禁**在Entity类中定义任何方法
+- **必须**添加 `[ComponentOf]` 或 `[ChildOf]` 特性指定父级约束
+
+### 生命周期接口规范
+```csharp
+// 基础生命周期
+public interface IAwake { }                          // 初始化
+public interface IAwake<A> { }                       // 带参数初始化
+public interface IDestroy { }                        // 销毁
+public interface IUpdate : IClassEvent<UpdateEvent> { } // 更新
+public interface ISerialize { }                     // 序列化前
+public interface IDeserialize { }                   // 反序列化后
+
+// 异步生命周期
+public interface IAwakeAsync { }
+public interface IAwakeAsync<A> { }
+```
+
+## System 开发规范
+
+### System 类定义规范
+```csharp
+// 位置：Packages/cn.etetet.{包名}/Scripts/Hotfix/ 或 Scripts/HotfixView/
+namespace ET  // 或 ET.Client, ET.Server
+{
+    /// <summary>
+    /// 详细的中文描述
+    /// </summary>
+    [FriendOf(typeof(ExampleComponent))]           // 访问友元Entity
+    [EntitySystemOf(typeof(ExampleComponent))]     // 指定对应的Entity类型
+    public static partial class ExampleComponentSystem
+    {
+        #region 生命周期方法
+
+        [EntitySystem]
+        private static void Awake(this ExampleComponent self)
+        {
+            // 初始化逻辑
+        }
+
+        [EntitySystem]
+        private static void Awake(this ExampleComponent self, int value)
+        {
+            // 带参数的初始化逻辑
+        }
+
+        [EntitySystem]
+        private static void Destroy(this ExampleComponent self)
+        {
+            // 销毁清理逻辑
+        }
+
+        #endregion
+
+        #region 业务方法
+
+        /// <summary>
+        /// 业务方法的中文描述
+        /// </summary>
+        public static void DoSomething(this ExampleComponent self, int param)
+        {
+            // 业务逻辑实现
+        }
+
+        #endregion
+    }
+}
+```
+
+### System 类要求
+- **必须**是静态类（`static`）
+- **必须**包含 `partial` 关键字
+- **必须**添加 `[EntitySystemOf(typeof(对应Entity类))]` 特性
+- **必须**实现对应Entity的 `Awake` 生命周期函数
+- **必须**添加 `[FriendOf(typeof(Entity类))]` 特性访问Entity字段
+- **所有方法**必须是静态扩展方法
+- **生命周期方法**必须添加 `[EntitySystem]` 特性并声明为 `private static`
+
+## 命名空间规范
+
+### 基础命名空间
+- `ET`：通用命名空间，用于共享代码
+- `ET.Client`：客户端专用命名空间
+- `ET.Server`：服务器专用命名空间
+
+### 命名空间选择原则
+```csharp
+// Model/Hotfix 程序集 - 共享代码
+namespace ET { }
+
+// ModelView/HotfixView 程序集 - 客户端代码  
+namespace ET.Client { }
+
+// 服务器专用代码
+namespace ET.Server { }
+```
+
+## 特性使用规范
+
+### 核心特性说明
+```csharp
+// Entity组件约束
+[ComponentOf(typeof(ParentType))]  // 指定唯一父级类型
+[ComponentOf]                      // 允许多种父级类型
+[ChildOf(typeof(ParentType))]      // 指定子实体父级类型
+[ChildOf]                          // 允许多种父级类型
+
+// System相关特性
+[EntitySystemOf(typeof(EntityType))]        // 标记System对应的Entity
+[EntitySystem]                               // 标记生命周期方法
+[FriendOf(typeof(EntityType))]              // 允许访问Entity私有字段
+
+// 生成器相关特性
+[EnableAccessEntiyChildAttribute]           // 允许访问Entity的child和component
+[EnableMethodAttribute]                      // 启用方法增强
+```
+
+## 文件组织结构规范
+
+### 标准包结构
+```
+Packages/cn.etetet.{包名}/
+├── packagegit.json                    # 包配置文件
+├── Editor/                            # 编辑器代码
+├── Runtime/                           # 运行时代码
+└── Scripts/
+    ├── Model/                         # Model程序集
+    │   ├── Share/                     # 共享代码
+    │   ├── Client/                    # 客户端专用
+    │   └── Server/                    # 服务器专用
+    ├── ModelView/                     # ModelView程序集
+    │   └── Client/                    # 客户端视图模型
+    ├── Hotfix/                        # Hotfix程序集
+    │   ├── Share/                     # 共享逻辑
+    │   ├── Client/                    # 客户端逻辑
+    │   └── Server/                    # 服务器逻辑
+    └── HotfixView/                    # HotfixView程序集
+        └── Client/                    # 客户端视图逻辑
+```
+
+### 文件命名规范
+- Entity文件：`{功能名}Component.cs`
+- System文件：`{功能名}ComponentSystem.cs`  
+- 配置文件：`{功能名}Config.cs`
+- 协议文件：`{协议名}.proto`
+
+## 代码质量规范
+
+### 注释规范
+```csharp
+/// <summary>
+/// 类的详细中文描述
+/// 说明功能、用途和注意事项
+/// </summary>
+public class ExampleComponent : Entity, IAwake
+{
+    /// <summary>
+    /// 字段的中文描述
+    /// </summary>
+    public int Value;
+}
+
+/// <summary>
+/// 方法的详细中文描述
+/// </summary>
+/// <param name="self">当前组件实例</param>
+/// <param name="value">参数的中文描述</param>
+/// <returns>返回值的中文描述</returns>
+public static bool DoSomething(this ExampleComponent self, int value)
+{
+    // 重要逻辑的中文注释
+    return true;
+}
+```
+
+### 编码风格
+```csharp
+// 命名规范
+public class PlayerComponent        // 类名：PascalCase
+public static void GetItem()       // 方法名：PascalCase  
+public string playerName;          // 字段名：camelCase
+private string _internalField;     // 私有字段：_camelCase
+public const int MAX_PLAYERS = 100; // 常量：UPPER_SNAKE_CASE
+
+// 代码格式
+if (condition) {                   // 左大括号同行
+    // 4空格缩进
+}                                  // 右大括号单独一行
+```
+
+## 异步编程规范
+
+### ETTask使用
+```csharp
+// 使用ETTask代替Task
+public static async ETTask DoAsyncWork(this ExampleComponent self)
+{
+    await ETTask.CompletedTask;
+}
+
+// 带返回值的异步方法
+public static async ETTask<bool> TryDoWork(this ExampleComponent self)
+{
+    await SomeAsyncOperation();
+    return true;
+}
+
+// 异常处理
+public static async ETTask SafeAsyncWork(this ExampleComponent self)
+{
+    try
+    {
+        await DoAsyncWork(self);
+    }
+    catch (Exception e)
+    {
+        Log.Error($"异步操作失败: {e}");
+    }
+}
+```
+
+## UI框架 (YIUI) 规范
+
+### YIUI Entity规范
+```csharp
+// UI Entity必须继承特定接口
+public class ExamplePanelComponent : Entity, IAwake, IDestroy,
+    IYIUIBind,          // UI绑定
+    IYIUIInitialize,    // UI初始化  
+    IYIUIOpen,          // UI打开
+    IYIUIClose          // UI关闭
+{
+    // UI相关数据字段
+}
+```
+
+### YIUI System规范
+```csharp
+[FriendOf(typeof(ExamplePanelComponent))]
+[EntitySystemOf(typeof(ExamplePanelComponent))]
+public static partial class ExamplePanelComponentSystem
+{
+    [EntitySystem]
+    private static void YIUIBind(this ExamplePanelComponent self)
+    {
+        // UI组件绑定逻辑
+    }
+
+    [EntitySystem]
+    private static void YIUIInitialize(this ExamplePanelComponent self)
+    {
+        // UI初始化逻辑
+    }
+
+    [EntitySystem]
+    private static async ETTask<bool> YIUIOpen(this ExamplePanelComponent self)
+    {
+        // UI打开逻辑
+        return true;
+    }
+
+    [EntitySystem]
+    private static async ETTask<bool> YIUIClose(this ExamplePanelComponent self)
+    {
+        // UI关闭逻辑
+        return true;
+    }
+}
+```
+
+## 网络协议规范
+
+### 协议命名规范
+- 请求协议：`C2X_` 开头（客户端到服务器）
+- 响应协议：`X2C_` 开头（服务器到客户端）
+- 服务器间：`G2M_`、`M2G_` 等（网关到地图等）
+
+### 协议文件组织
+```
+Packages/cn.etetet.proto/
+├── Proto/
+│   ├── Common/          # 通用协议
+│   ├── Login/           # 登录协议
+│   ├── Game/            # 游戏协议
+│   └── Battle/          # 战斗协议
+└── Scripts/
+    └── Model/
+        └── Generate/     # 自动生成的协议代码
+```
+
+## 配置数据规范
+
+### 配置类定义
+```csharp
+// 单个配置项
+[Config]
+public class ExampleConfig : AConfig
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public int Value { get; set; }
+}
+
+// 配置容器
+[ConfigCategory]
+public class ExampleConfigCategory : AConfigCategory<ExampleConfig>
+{
+    public static ExampleConfigCategory Instance => ConfigComponent.Instance.GetCategory<ExampleConfigCategory>();
+}
+```
+
+## 错误处理和日志规范
+
+### 日志使用
+```csharp
+// 日志级别选择
+Log.Debug("调试信息，仅开发时使用");
+Log.Info("重要的业务信息");
+Log.Warning("可能的问题，但不影响运行");
+Log.Error("错误信息，需要关注");
+Log.Error(exception); // 异常对象
+
+// 日志格式
+Log.Info($"玩家{playerId}完成了任务{taskId}");
+```
+
+### 异常处理
+```csharp
+public static bool TryDoSomething(this ExampleComponent self)
+{
+    try
+    {
+        // 可能抛出异常的代码
+        return true;
+    }
+    catch (Exception e)
+    {
+        Log.Error($"操作失败: {e}");
+        return false;
+    }
+    finally
+    {
+        // 清理代码
+    }
+}
+```
+
+## 性能优化规范
+
+### 对象池使用
+```csharp
+// 从对象池获取对象
+var obj = ObjectPool.Fetch<SomeClass>();
+
+// 使用完毕归还对象池
+obj.Dispose(); // 如果实现了IDisposable
+// 或
+ObjectPool.Return(obj);
+```
+
+### 内存管理
+```csharp
+// 避免频繁装箱
+public static void ProcessValue(this ExampleComponent self, object value)
+{
+    // 错误：会产生装箱
+    // if (value.Equals(0)) { }
+    
+    // 正确：使用泛型避免装箱
+    if (value is int intValue && intValue == 0) { }
+}
+```
+
+## 常见问题和解决方案
+
+### 1. Entity字段访问权限问题
+```csharp
+// 问题：无法访问Entity的private字段
+// 解决：在System类上添加FriendOf特性
+[FriendOf(typeof(ExampleComponent))]
+public static partial class ExampleComponentSystem
+{
+    public static void AccessField(this ExampleComponent self)
+    {
+        self.privateField = 100; // 现在可以访问了
+    }
+}
+```
+
+### 2. 生命周期方法缺失
+```csharp
+// 问题：Entity没有对应的System生命周期方法
+// 解决：确保System中实现了对应的生命周期方法
+[EntitySystem]
+private static void Awake(this ExampleComponent self)
+{
+    // 必须实现，即使是空方法
+}
+```
+
+### 3. 程序集引用错误
+```csharp
+// 问题：无法访问其他程序集的类型
+// 解决：检查packagegit.json中的ScriptsReferences配置
+{
+    "ScriptsReferences": {
+        "Model": ["ET.Core"],
+        "Hotfix": ["ET.Core", "ET.Model"],
+        "ModelView": ["ET.Core", "ET.Model", "ET.YIUIFramework"],
+        "HotfixView": ["ET.Core", "ET.Model", "ET.ModelView", "ET.Hotfix"]
+    }
+}
+```
+
+## AI开发助手使用指南
+
+### 推荐的AI提示词模板
+```
+请帮我在ET框架中创建一个[功能描述]的Entity和对应的System：
+- Entity名称：[EntityName]Component
+- 主要功能：[详细功能描述]
+- 父级Entity：[ParentEntityType]（如果有）
+- 生命周期需求：[IAwake, IDestroy等]
+- 程序集位置：[Model/ModelView]
+- 命名空间：[ET/ET.Client/ET.Server]
+
+请确保：
+1. 严格遵循ET框架规范
+2. 添加详细的中文注释
+3. 正确使用特性标签
+4. 实现必要的生命周期方法
+```
+
+### 代码审查检查清单
+- [ ] Entity类继承Entity并实现IAwake
+- [ ] Entity类不包含任何方法
+- [ ] System类是静态partial类
+- [ ] System类添加了正确的特性标签
+- [ ] 实现了必要的生命周期方法
+- [ ] 添加了详细的中文注释
+- [ ] 文件放置在正确的目录和程序集中
+- [ ] 使用了正确的命名空间
+- [ ] 遵循了代码格式规范
+
+## 总结
+
+严格遵循以上规范，确保：
+1. **架构清晰**：Entity负责数据，System负责逻辑
+2. **模块化**：功能按包组织，程序集合理分离
+3. **可维护**：代码规范统一，注释详细
+4. **可扩展**：遵循框架设计原则，易于扩展
+5. **高质量**：充分的错误处理和性能优化
+
+这些规范是ET框架高效开发的基础，请AI严格遵循执行。
